@@ -5,14 +5,12 @@ import glob
 import os
 
 def selecionar_pasta():
-    # Abre a janela para escolher a pasta onde estão os arquivos
     pasta_escolhida = filedialog.askdirectory(title="Selecione a pasta com os arquivos tratados")
     
     if not pasta_escolhida:
         return
 
     try:
-        # Entra na pasta selecionada
         caminho_padrao = os.path.join(pasta_escolhida, "*_media_precipitacao.csv")
         arquivos = glob.glob(caminho_padrao)
 
@@ -23,33 +21,39 @@ def selecionar_pasta():
         lista_dfs = []
         prefixo_estacao = None
 
-        # Lê os arquivos da pasta escolhida
         for arquivo in arquivos:
-            df = pd.read_csv(arquivo, sep=';', decimal=',')
+            # Lê o arquivo ignorando possíveis problemas de codificação
+            df = pd.read_csv(arquivo, sep=';', decimal=',', encoding='utf-8-sig')
             lista_dfs.append(df)
             
             if not prefixo_estacao:
                 nome_base = os.path.basename(arquivo)
                 partes = nome_base.split("_")
                 for i, parte in enumerate(partes):
-                    if "-" in parte and len(parte) == 10:
+                    if ("-" in parte or "/" in parte) and len(parte) == 10:
                         prefixo_estacao = "_".join(partes[:i]) + "_"
                         break
                 if not prefixo_estacao:
                     prefixo_estacao = nome_base.rsplit("_media_precipitacao", 1)[0].rsplit("_", 4)[0] + "_"
 
-        # Une e processa os dados
+        # Une todos os dataframes
         df_final = pd.concat(lista_dfs, ignore_index=True)
-        df_final['DATA'] = pd.to_datetime(df_final['DATA'])
+        
+        # CORREÇÃO: Usa format='mixed' para aceitar tanto hífen quanto barra nas datas
+        df_final['DATA'] = pd.to_datetime(df_final['DATA'], format='mixed', errors='coerce')
+        
+        # Remove linhas com datas inválidas por segurança
+        df_final = df_final.dropna(subset=['DATA'])
+        
+        # Ordena cronologicamente
         df_final = df_final.sort_values(by='DATA').reset_index(drop=True)
         
-        # Pega a primeira e a última data para o nome
+        # Pega a primeira e a última data formatadas corretamente com hífen
         data_inicio = df_final['DATA'].min().strftime('%d-%m-%Y')
         data_fim = df_final['DATA'].max().strftime('%d-%m-%Y')
         
         df_final['DATA'] = df_final['DATA'].dt.strftime('%Y-%m-%d')
         
-        # Monta o nome final na mesma pasta
         if prefixo_estacao:
             nome_final = f"{prefixo_estacao}{data_inicio}_A_{data_fim}_media_precipitacao.csv"
         else:
@@ -65,7 +69,7 @@ def selecionar_pasta():
     except Exception as e:
         messagebox.showerror("Erro", f"Ocorreu um erro ao juntar os arquivos:\n{str(e)}")
 
-# Configuração da Janela com o mesmo design moderno
+# Configuração da Janela
 root = tk.Tk()
 root.title("Unificador de Tabelas INMET")
 root.geometry("500x350")
@@ -83,7 +87,7 @@ btn_processar = tk.Button(
     text="Selecionar Pasta e Juntar", 
     command=selecionar_pasta, 
     font=("Segoe UI", 12, "bold"), 
-    bg="#28A745",  # Verde corporativo para diferenciar e indicar "conclusão/união"
+    bg="#28A745", 
     fg="white", 
     activebackground="#218838",
     activeforeground="white",
